@@ -1,0 +1,78 @@
+bash -c '
+<%= "export http_proxy=\"#{knife_config[:bootstrap_proxy]}\"" if knife_config[:bootstrap_proxy] -%>
+
+if [ ! -f /usr/bin/chef-client ]; then
+  apt-get update
+  apt-get install -y ruby ruby1.8-dev build-essential wget libruby-extras libruby1.8-extras
+  cd /tmp
+  wget <%= "--proxy=on " if knife_config[:bootstrap_proxy] %>http://production.cf.rubygems.org/rubygems/rubygems-1.8.15.tgz
+  tar zxf rubygems-1.8.15.tgz
+  cd rubygems-1.8.15
+  ruby setup.rb --no-format-executable
+
+  gem update --no-rdoc --no-ri
+  gem install ohai --no-rdoc --no-ri --verbose
+  gem install chef --no-rdoc --no-ri --verbose <%= bootstrap_version_string %>
+fi
+
+mkdir -p /etc/chef
+
+(
+cat <<'EOP'
+<%= validation_key %>
+EOP
+) > /tmp/validation.pem
+awk NF /tmp/validation.pem > /etc/chef/validation.pem
+rm /tmp/validation.pem
+chmod 600 /etc/chef/validation.pem
+
+<% if @chef_config[:encrypted_data_bag_secret] -%>
+(
+cat <<'EOP'
+<%= encrypted_data_bag_secret %>
+EOP
+) > /tmp/encrypted_data_bag_secret
+awk NF /tmp/encrypted_data_bag_secret > /etc/chef/encrypted_data_bag_secret
+rm /tmp/encrypted_data_bag_secret
+<% end -%>
+
+(
+cat <<'EOP'
+<%= config_content %>
+EOP
+) > /etc/chef/client.rb
+
+<%
+require 'chef/api_client'
+private_key = nil
+client_name = [@config[:node].cluster_name, @config[:node].facet_name, @config[:node].facet_index].join('-')
+client = Chef::ApiClient.load(client_name) rescue client = nil
+Chef::Log.info("Tips for 401 Unauthorized Error: if chef-client throws 401 error, try bootstrap again after executing 'knife client delete #{client_name}'.")
+Chef::Log.info("Tips for 403 Forbidden Error   : if chef-client throws 403 error, try bootstrap again after regenerating your organization's private key.")
+if client.nil? then
+  Chef::Log.debug("generating private key for the new client #{client_name}")
+  client = Chef::ApiClient.new
+  client.name(client_name)
+  client.admin(false)
+  key = client.save(new_key=true)
+  private_key = key['private_key']
+end
+%>
+<% if private_key -%>
+(
+cat <<'EOP'
+<%= private_key %>
+EOP
+) > /etc/chef/client.pem
+chmod 600 /etc/chef/client.pem
+<% end -%>
+
+
+(
+cat <<'EOP'
+<%= { "run_list" => @run_list, "cluster_name" => @config[:node].cluster_name, "facet_name" => @config[:node].facet_name, "facet_index" => @config[:node].facet_index }.to_json %>
+EOP
+) > /etc/chef/first-boot.json
+
+<%= start_chef %>'
+ 

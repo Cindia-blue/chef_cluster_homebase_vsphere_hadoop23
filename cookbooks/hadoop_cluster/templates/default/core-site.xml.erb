@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<configuration>
+<property> <name>fs.default.name</name><value>hdfs://<%= @hadoop[:namenode][:addr] %>:9000/</value></property>
+<!--<property> <name>fs.checkpoint.dir</name><value><%= @hadoop[:secondarynn][:data_dirs] %></value><final>true</final></property>
+<property> <name>hadoop.tmp.dir</name><value><%= @hadoop[:tmp_dir] %></value> <final>true</final></property>
+-->
+</configuration>
+
+
